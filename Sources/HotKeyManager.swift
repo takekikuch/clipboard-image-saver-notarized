@@ -15,11 +15,19 @@ class HotKeyManager: ObservableObject {
         // 既存のホットキーを無効化
         hotKey = nil
         
+        // アクセシビリティ権限をチェック
+        let permissionManager = PermissionManager.shared
+        if !permissionManager.checkAccessibilityPermission() {
+            print("⚠️ Accessibility permission required for global hotkey")
+            // 権限が不足している場合は設定しない
+            return
+        }
+        
         let shortcut = settingsManager.shortcutKey
         
         // キーコードをHotKey.Keyに変換
         guard let hotKeyKey = convertToHotKeyKey(shortcut.keyCode) else {
-            print("Unsupported key code: \(shortcut.keyCode)")
+            print("❌ Unsupported key code: \(shortcut.keyCode)")
             return
         }
         
@@ -29,10 +37,12 @@ class HotKeyManager: ObservableObject {
         hotKey = HotKey(key: hotKeyKey, modifiers: hotKeyModifiers)
         
         hotKey?.keyDownHandler = { [weak self] in
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 self?.handleShortcut()
             }
         }
+        
+        print("✅ Global hotkey setup successful: \(shortcut.displayString)")
     }
     
     private func convertToHotKeyKey(_ keyCode: String) -> Key? {
@@ -102,7 +112,15 @@ class HotKeyManager: ObservableObject {
     
     private func handleShortcut() {
         let shortcut = settingsManager.shortcutKey
-        print("\(shortcut.displayString) pressed - starting clipboard image save process")
+        print("🔍 \(shortcut.displayString) pressed - starting clipboard image save process")
+        
+        // 権限を再確認（権限が取り消された可能性がある）
+        let permissionManager = PermissionManager.shared
+        if !permissionManager.checkAccessibilityPermission() {
+            print("❌ Accessibility permission lost, requesting permission")
+            permissionManager.showPermissionAlertFor(.accessibility)
+            return
+        }
         
         ClipboardManager.shared.saveClipboardImage()
     }

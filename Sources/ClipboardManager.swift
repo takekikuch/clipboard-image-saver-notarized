@@ -7,6 +7,8 @@ class ClipboardManager: ObservableObject {
     
     @Published var currentImage: NSImage?
     @Published var imageInfo: String = ""
+    @Published var showUserAlert = false
+    @Published var userAlertMessage = ""
     private var lastChangeCount: Int = 0
     private var clipboardTimer: Timer?
     
@@ -31,13 +33,26 @@ class ClipboardManager: ObservableObject {
     
     func saveClipboardImage() {
         guard let image = getClipboardImage() else {
-            print("No image found in clipboard")
+            print("❌ No image found in clipboard")
+            showUserError("クリップボードに画像が見つかりません。画像をコピーしてから再度お試しください。")
             return
         }
         
-        guard let finderPath = FinderIntegration.shared.getCurrentFinderWindowPath() else {
-            print("Could not get current Finder window path")
-            return
+        let finderIntegration = FinderIntegration.shared
+        guard let finderPath = finderIntegration.getCurrentFinderWindowPath() else {
+            print("❌ Could not get current Finder window path")
+            
+            // FinderIntegrationのエラー状態をチェック
+            if finderIntegration.showPermissionError {
+                // 権限エラーの場合は既にPermissionManagerが処理しているので何もしない
+                return
+            } else if !finderIntegration.lastError.isEmpty {
+                showUserError(finderIntegration.lastError)
+                return
+            } else {
+                showUserError("保存先フォルダを取得できませんでした。Finderでフォルダを開いてから再度お試しください。")
+                return
+            }
         }
         
         let settings = SettingsManager.shared
@@ -59,7 +74,14 @@ class ClipboardManager: ObservableObject {
             print("✅ Successfully saved \(format.displayName) image to: \(filePath.path) (\(imageData.count) bytes)")
         } catch {
             print("❌ Error saving image: \(error.localizedDescription)")
+            showUserError("画像の保存に失敗しました: \(error.localizedDescription)")
         }
+    }
+    
+    private func showUserError(_ message: String) {
+        print("🔍 Showing user error: \(message)")
+        userAlertMessage = message
+        showUserAlert = true
     }
     
     func startClipboardMonitoring() {
@@ -470,8 +492,7 @@ class ClipboardManager: ObservableObject {
             
             if format == .png {
                 // PNG形式が必要な場合、TIFFからPNGに変換
-                if let tiffImage = NSImage(data: tiffData),
-                   let bitmapRep = NSBitmapImageRep(data: tiffData),
+                if let bitmapRep = NSBitmapImageRep(data: tiffData),
                    let pngData = bitmapRep.representation(using: .png, properties: [:]) {
                     print("✅ Emergency PNG conversion succeeded: \(pngData.count) bytes")
                     return pngData

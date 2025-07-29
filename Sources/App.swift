@@ -206,6 +206,71 @@ struct FilenameTemplateEditor: View {
     }
 }
 
+struct PermissionGuideSection: View {
+    @ObservedObject var permissionManager: PermissionManager
+    @State private var missingPermissions: [PermissionManager.PermissionType] = []
+    
+    var body: some View {
+        if !missingPermissions.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundColor(.orange)
+                    Text("権限設定が必要です")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                }
+                
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(missingPermissions, id: \.self) { permission in
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Image(systemName: permission == .accessibility ? "hand.raised.fill" : "applescript.fill")
+                                    .foregroundColor(.blue)
+                                    .frame(width: 16)
+                                
+                                Text(permission.title)
+                                    .font(.caption)
+                                    .fontWeight(.medium)
+                                
+                                Spacer()
+                                
+                                Button("設定") {
+                                    permissionManager.openSystemPreferences(for: permission)
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.mini)
+                            }
+                            
+                            Text(permission.description)
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                                .padding(.leading, 20)
+                        }
+                    }
+                }
+                
+                Button("権限を再確認") {
+                    checkPermissions()
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .frame(maxWidth: .infinity)
+            }
+            .padding(8)
+            .background(Color.orange.opacity(0.1))
+            .cornerRadius(8)
+            .onAppear {
+                checkPermissions()
+            }
+        }
+    }
+    
+    private func checkPermissions() {
+        missingPermissions = permissionManager.checkAllPermissions()
+    }
+}
+
 struct ClipboardPreviewSection: View {
     @ObservedObject var clipboardManager: ClipboardManager
     
@@ -357,6 +422,7 @@ struct ClipboardImageSaverApp: App {
     @StateObject private var hotKeyManager = HotKeyManager()
     @StateObject private var settingsManager = SettingsManager.shared
     @StateObject private var clipboardManager = ClipboardManager.shared
+    @StateObject private var permissionManager = PermissionManager.shared
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     
     var body: some Scene {
@@ -364,6 +430,14 @@ struct ClipboardImageSaverApp: App {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Clipboard Image Saver")
                     .font(.headline)
+                
+                // 権限ガイドセクション（権限不足時のみ表示）
+                PermissionGuideSection(permissionManager: permissionManager)
+                
+                // 権限ガイドがある場合はDividerを表示
+                if !permissionManager.checkAllPermissions().isEmpty {
+                    Divider()
+                }
                 
                 Divider()
                 
@@ -436,6 +510,28 @@ struct ClipboardImageSaverApp: App {
             }
             .padding()
             .frame(minWidth: 200)
+            .onAppear {
+                // 初回起動時の権限チェック
+                if permissionManager.shouldShowPermissionGuide() {
+                    Task {
+                        try? await Task.sleep(nanoseconds: 500_000_000) // 0.5秒待機
+                        permissionManager.requestAccessibilityPermissionIfNeeded()
+                    }
+                }
+            }
+            .alert(permissionManager.permissionAlertType.title, isPresented: $permissionManager.showPermissionAlert) {
+                Button("システム設定を開く") {
+                    permissionManager.openSystemPreferences(for: permissionManager.permissionAlertType)
+                }
+                Button("後で", role: .cancel) { }
+            } message: {
+                Text(permissionManager.permissionAlertMessage)
+            }
+            .alert("エラー", isPresented: $clipboardManager.showUserAlert) {
+                Button("OK") { }
+            } message: {
+                Text(clipboardManager.userAlertMessage)
+            }
         }
         .menuBarExtraStyle(.window)
     }

@@ -1,0 +1,185 @@
+name: Create Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'  # v1.0.0 形式のタグでトリガー
+
+env:
+  APP_NAME: ClipboardImageSaver
+  XCODE_VERSION: "15.2"
+
+jobs:
+  build-and-release:
+    runs-on: macos-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Xcode
+      uses: maxim-lobanov/setup-xcode@v1
+      with:
+        xcode-version: ${{ env.XCODE_VERSION }}
+        
+    - name: Get version from tag
+      id: version
+      run: |
+        VERSION=${GITHUB_REF#refs/tags/v}
+        echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+        echo "TAG_NAME=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+        
+    - name: Cache Swift packages
+      uses: actions/cache@v4
+      with:
+        path: .build
+        key: ${{ runner.os }}-swift-${{ hashFiles('Package.swift') }}
+        restore-keys: |
+          ${{ runner.os }}-swift-
+          
+    - name: Resolve Swift dependencies
+      run: swift package resolve
+      
+    - name: Build application
+      run: swift build -c release
+      
+    - name: Create application bundle
+      run: |
+        # アプリケーションバンドル作成
+        mkdir -p dist/${{ env.APP_NAME }}.app/Contents/MacOS
+        mkdir -p dist/${{ env.APP_NAME }}.app/Contents/Resources
+        
+        # 実行ファイルコピー
+        cp .build/release/${{ env.APP_NAME }} dist/${{ env.APP_NAME }}.app/Contents/MacOS/
+        
+        # Info.plist作成
+        cat > dist/${{ env.APP_NAME }}.app/Contents/Info.plist << EOF
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+            <key>CFBundleExecutable</key>
+            <string>${{ env.APP_NAME }}</string>
+            <key>CFBundleIdentifier</key>
+            <string>com.takekikuch.${{ env.APP_NAME }}</string>
+            <key>CFBundleName</key>
+            <string>${{ env.APP_NAME }}</string>
+            <key>CFBundleVersion</key>
+            <string>${{ steps.version.outputs.VERSION }}</string>
+            <key>CFBundleShortVersionString</key>
+            <string>${{ steps.version.outputs.VERSION }}</string>
+            <key>LSUIElement</key>
+            <true/>
+            <key>NSAppleEventsUsageDescription</key>
+            <string>Finderの現在フォルダに画像を保存するために使用します。</string>
+            <key>NSHumanReadableCopyright</key>
+            <string>© 2025 takekikuch</string>
+        </dict>
+        </plist>
+        EOF
+        
+    - name: Create DMG (without signing)
+      run: |
+        # assetsディレクトリ作成
+        mkdir -p assets
+        
+        # DMG作成スクリプトを実行（署名なし版）
+        ./scripts/create_dmg.sh ${{ steps.version.outputs.VERSION }} dist/${{ env.APP_NAME }}.app
+        
+    - name: Calculate checksums
+      id: checksums
+      run: |
+        cd dist
+        DMG_FILE="${{ env.APP_NAME }}-${{ steps.version.outputs.VERSION }}.dmg"
+        if [ -f "$DMG_FILE" ]; then
+          SHA256_DMG=$(shasum -a 256 "$DMG_FILE" | cut -d' ' -f1)
+          echo "SHA256_DMG=$SHA256_DMG" >> $GITHUB_OUTPUT
+          echo "DMG_FILE=$DMG_FILE" >> $GITHUB_OUTPUT
+          echo "DMG_SIZE=$(du -h "$DMG_FILE" | cut -f1)" >> $GITHUB_OUTPUT
+        fi
+        
+    - name: Generate release notes
+      id: release_notes
+      run: |
+        cat > release_notes.md << EOF
+        # ${{ env.APP_NAME }} ${{ steps.version.outputs.VERSION }}
+        
+        ## 📥 ダウンロード / Download
+        
+        - **DMG (推奨)**: [${{ env.APP_NAME }}-${{ steps.version.outputs.VERSION }}.dmg](https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.TAG_NAME }}/${{ steps.checksums.outputs.DMG_FILE }})
+        
+        ## 📋 チェックサム / Checksums
+        
+        - **SHA256**: \`${{ steps.checksums.outputs.SHA256_DMG }}\`
+        - **ファイルサイズ**: ${{ steps.checksums.outputs.DMG_SIZE }}
+        
+        ## 🔧 インストール方法 / Installation
+        
+        1. DMGファイルをダウンロード
+        2. DMGをマウントし、${{ env.APP_NAME }}.appをApplicationsフォルダにドラッグ
+        3. 初回起動時に権限設定を行う（アクセシビリティ・Apple Events）
+        
+        ## ✨ 主な機能 / Features
+        
+        - **グローバルショートカット**: ⌘+Shift+V でクリップボード画像を保存
+        - **リアルタイムプレビュー**: クリップボード画像の即座な表示
+        - **ドラッグ&ドロップ**: プレビューから直接保存
+        - **フォーマット選択**: PNG・JPEG形式での保存
+        - **カスタマイズ**: ショートカットキー・ファイル名テンプレート変更可能
+        
+        ## 🛠️ システム要件 / System Requirements
+        
+        - macOS 13.0 以降
+        - アクセシビリティ権限
+        - Apple Events権限
+        
+        ## 📞 サポート / Support
+        
+        バグ報告や機能要望は[Issues](https://github.com/${{ github.repository }}/issues)からお願いします。
+        
+        ---
+        
+        **注意**: このバージョンは未署名です。本格的な配布には Developer ID 証明書による署名が必要です。
+        EOF
+        
+    - name: Create GitHub Release
+      uses: actions/create-release@v1
+      id: create_release
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ steps.version.outputs.TAG_NAME }}
+        release_name: ${{ env.APP_NAME }} ${{ steps.version.outputs.VERSION }}
+        body_path: release_notes.md
+        draft: false
+        prerelease: false
+        
+    - name: Upload DMG to release
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: dist/${{ steps.checksums.outputs.DMG_FILE }}
+        asset_name: ${{ steps.checksums.outputs.DMG_FILE }}
+        asset_content_type: application/x-apple-diskimage
+        
+    - name: Upload README to release
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: README.md
+        asset_name: README.md
+        asset_content_type: text/markdown
+        
+    - name: Upload LICENSE to release
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: LICENSE
+        asset_name: LICENSE
+        asset_content_type: text/plain
