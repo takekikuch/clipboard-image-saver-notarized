@@ -23,9 +23,8 @@ class ClipboardManager: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            Task { @MainActor in
-                guard let self = self else { return }
-                self.updateImageInfo()
+            DispatchQueue.main.async {
+                self?.updateImageInfo()
             }
         }
         
@@ -92,9 +91,8 @@ class ClipboardManager: ObservableObject {
         print("🔍 Starting clipboard monitoring with changeCount: \(lastChangeCount)")
         
         clipboardTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
-            Task { @MainActor in
-                guard let self = self else { return }
-                self.checkClipboardChanges()
+            DispatchQueue.main.async {
+                self?.checkClipboardChanges()
             }
         }
         print("🔍 Clipboard timer started")
