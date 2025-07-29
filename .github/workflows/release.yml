@@ -80,11 +80,52 @@ jobs:
         
     - name: Create DMG (without signing)
       run: |
-        # assetsディレクトリ作成
-        mkdir -p assets
+        # 一時的なフォルダを作成
+        TEMP_DIR=$(mktemp -d)
         
-        # DMG作成スクリプトを実行（署名なし版）
-        ./scripts/create_dmg.sh ${{ steps.version.outputs.VERSION }} dist/${{ env.APP_NAME }}.app
+        # アプリケーションをコピー
+        cp -R dist/${{ env.APP_NAME }}.app "$TEMP_DIR/"
+        
+        # Applicationsフォルダへのシンボリックリンク作成
+        ln -s /Applications "$TEMP_DIR/Applications"
+        
+        # 直接DMGを作成（CI環境対応）
+        hdiutil create -srcfolder "$TEMP_DIR" \
+          -volname "${{ env.APP_NAME }} ${{ steps.version.outputs.VERSION }}" \
+          -fs HFS+ \
+          -fsargs "-c c=64,a=16,e=16" \
+          -format UDZO \
+          -imagekey zlib-level=9 \
+          "dist/${{ env.APP_NAME }}-${{ steps.version.outputs.VERSION }}.dmg"
+        
+        # 一時フォルダを削除
+        rm -rf "$TEMP_DIR"
+        
+        # READMEファイルも作成
+        cat > dist/README.txt << EOF
+        ${{ env.APP_NAME }} ${{ steps.version.outputs.VERSION }}
+        
+        【インストール方法】
+        1. ${{ env.APP_NAME }}.app を Applications フォルダにドラッグ&ドロップしてください
+        2. 初回起動時に権限設定が必要です：
+           - アクセシビリティ権限：グローバルショートカット用
+           - Apple Events権限：Finder統合用
+        
+        【使用方法】
+        - ⌘+Shift+V（デフォルト）でクリップボード画像を保存
+        - メニューバーアイコンから設定変更可能
+        - クリップボード画像のプレビュー表示
+        - ドラッグ&ドロップで保存も可能
+        
+        【システム要件】
+        - macOS 13.0 以降
+        - アクセシビリティ権限
+        - Apple Events権限
+        
+        ---
+        Clipboard Image Saver
+        © 2025 takekikuch
+        EOF
         
     - name: Calculate checksums
       id: checksums
