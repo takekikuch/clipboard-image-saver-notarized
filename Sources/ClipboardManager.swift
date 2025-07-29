@@ -18,17 +18,20 @@ class ClipboardManager: ObservableObject {
             return
         }
         
-        guard let pngData = image.pngData() else {
-            print("Could not convert image to PNG data")
+        let settings = SettingsManager.shared
+        let format = settings.selectedFormat
+        
+        guard let imageData = image.imageData(format: format, properties: settings.getCompressionProperties()) else {
+            print("Could not convert image to \(format.displayName) data")
             return
         }
         
-        let fileName = generateFileName()
+        let fileName = settings.generateFileName()
         let filePath = URL(fileURLWithPath: finderPath).appendingPathComponent(fileName)
         
         do {
-            try pngData.write(to: filePath)
-            print("Successfully saved image to: \(filePath.path)")
+            try imageData.write(to: filePath)
+            print("Successfully saved \(format.displayName) image to: \(filePath.path)")
         } catch {
             print("Error saving image: \(error.localizedDescription)")
         }
@@ -54,21 +57,20 @@ class ClipboardManager: ObservableObject {
         return nil
     }
     
-    private func generateFileName() -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
-        let dateString = formatter.string(from: Date())
-        return "Clipboard_\(dateString).png"
-    }
 }
 
 extension NSImage {
-    func pngData() -> Data? {
+    func imageData(format: ImageFormat, properties: [NSBitmapImageRep.PropertyKey: Any] = [:]) -> Data? {
         guard let tiffData = self.tiffRepresentation,
               let bitmapImage = NSBitmapImageRep(data: tiffData) else {
             return nil
         }
         
-        return bitmapImage.representation(using: .png, properties: [:])
+        return bitmapImage.representation(using: format.compressionType, properties: properties)
+    }
+    
+    // 後方互換性のためにpngData()メソッドを残す
+    func pngData() -> Data? {
+        return imageData(format: .png)
     }
 }
