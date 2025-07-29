@@ -2,6 +2,7 @@
 
 ## Changed in this version
 
+- Bump version to 0.9.0-beta
 - Complete Phase 2: Distribution packaging system
 - Add notarized distribution note to CLAUDE.md
 - Add clipboard image preview and drag & drop functionality
@@ -32,4 +33,4 @@
 3. 初回起動時に権限設定を行う
 
 ---
-Release created on 2025-07-29 21:06:12
+Release created on 2025-07-29 21:10:46
