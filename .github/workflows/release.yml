@@ -9,6 +9,10 @@ env:
   APP_NAME: ClipboardImageSaver
   XCODE_VERSION: "15.2"
 
+permissions:
+  contents: write
+  pull-requests: write
+
 jobs:
   build-and-release:
     runs-on: macos-latest
@@ -184,43 +188,15 @@ jobs:
         EOF
         
     - name: Create GitHub Release
-      uses: actions/create-release@v1
-      id: create_release
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: ${{ steps.version.outputs.TAG_NAME }}
-        release_name: ${{ env.APP_NAME }} ${{ steps.version.outputs.VERSION }}
-        body_path: release_notes.md
-        draft: false
-        prerelease: false
-        
-    - name: Upload DMG to release
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: dist/${{ steps.checksums.outputs.DMG_FILE }}
-        asset_name: ${{ steps.checksums.outputs.DMG_FILE }}
-        asset_content_type: application/x-apple-diskimage
-        
-    - name: Upload README to release
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: README.md
-        asset_name: README.md
-        asset_content_type: text/markdown
-        
-    - name: Upload LICENSE to release
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: LICENSE
-        asset_name: LICENSE
-        asset_content_type: text/plain
+      run: |
+        # GitHub CLIでリリース作成
+        gh release create ${{ steps.version.outputs.TAG_NAME }} \
+          --title "${{ env.APP_NAME }} ${{ steps.version.outputs.VERSION }}" \
+          --notes-file release_notes.md \
+          --draft=false \
+          --prerelease=false \
+          dist/${{ steps.checksums.outputs.DMG_FILE }} \
+          README.md \
+          LICENSE
