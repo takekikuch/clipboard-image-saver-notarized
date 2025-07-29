@@ -1,0 +1,37 @@
+# Xcode
+.DS_Store
+/.build
+/Packages
+xcuserdata/
+DerivedData/
+.swiftpm/configuration/registries.json
+.swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
+.netrc
+
+# Build products
+*.app
+*.dSYM.zip
+*.dSYM
+
+# Firebase
+firebase-debug.log
+.firebase/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# IDEs
+.vscode/
+.idea/
+
+# Temporary files
+*.tmp
+*.temp
+
+# Logs
+*.log
+
+# Package resolved (SPM dependency versions - some prefer to include this)
+Package.resolved
