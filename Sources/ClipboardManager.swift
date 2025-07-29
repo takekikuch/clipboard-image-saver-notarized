@@ -24,7 +24,8 @@ class ClipboardManager: ObservableObject {
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor in
-                self?.updateImageInfo()
+                guard let self = self else { return }
+                self.updateImageInfo()
             }
         }
         
@@ -92,7 +93,8 @@ class ClipboardManager: ObservableObject {
         
         clipboardTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
             Task { @MainActor in
-                self?.checkClipboardChanges()
+                guard let self = self else { return }
+                self.checkClipboardChanges()
             }
         }
         print("🔍 Clipboard timer started")
