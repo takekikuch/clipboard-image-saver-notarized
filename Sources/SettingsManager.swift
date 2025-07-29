@@ -1,6 +1,10 @@
 import Foundation
 import AppKit
 
+extension Notification.Name {
+    static let settingsChanged = Notification.Name("settingsChanged")
+}
+
 // ショートカットキーの修飾子定義
 struct ShortcutModifiers: OptionSet, Codable {
     let rawValue: Int
@@ -122,12 +126,14 @@ class SettingsManager: ObservableObject {
     @Published var selectedFormat: ImageFormat {
         didSet {
             UserDefaults.standard.set(selectedFormat.rawValue, forKey: "selectedImageFormat")
+            NotificationCenter.default.post(name: .settingsChanged, object: nil)
         }
     }
     
     @Published var jpegQuality: Double {
         didSet {
             UserDefaults.standard.set(jpegQuality, forKey: "jpegQuality")
+            NotificationCenter.default.post(name: .settingsChanged, object: nil)
         }
     }
     
