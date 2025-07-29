@@ -35,3 +35,7 @@ firebase-debug.log
 
 # Package resolved (SPM dependency versions - some prefer to include this)
 Package.resolved
+
+# Claude development files
+.claude/
+CLAUDE.md
