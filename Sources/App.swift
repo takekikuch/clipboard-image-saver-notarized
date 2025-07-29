@@ -102,6 +102,108 @@ struct ShortcutKeySelector: View {
     }
 }
 
+struct FilenameTemplateEditor: View {
+    @Binding var template: String
+    @State private var showingPopover = false
+    @State private var tempTemplate: String
+    
+    init(template: Binding<String>) {
+        self._template = template
+        self._tempTemplate = State(initialValue: template.wrappedValue)
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Button("テンプレート編集") {
+                    tempTemplate = template
+                    showingPopover = true
+                }
+                .buttonStyle(.bordered)
+                .popover(isPresented: $showingPopover) {
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text("ファイル名テンプレート設定")
+                            .font(.headline)
+                        
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("テンプレート")
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                            
+                            TextField("テンプレート", text: $tempTemplate)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 300)
+                        }
+                        
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("利用可能な変数")
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                            
+                            VStack(alignment: .leading, spacing: 2) {
+                                ForEach(FilenameTemplate.availableVariables, id: \.0) { variable, description in
+                                    HStack {
+                                        Text(variable)
+                                            .font(.system(.caption, design: .monospaced))
+                                            .foregroundColor(.blue)
+                                            .onTapGesture {
+                                                tempTemplate += variable
+                                            }
+                                        Text(description)
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                        Spacer()
+                                    }
+                                }
+                            }
+                            .padding(.leading, 8)
+                        }
+                        
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("プレビュー")
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                            
+                            Text(FilenameTemplate.processTemplate(tempTemplate, format: .png) + ".png")
+                                .font(.system(.caption, design: .monospaced))
+                                .foregroundColor(.secondary)
+                                .padding(8)
+                                .background(Color.gray.opacity(0.1))
+                                .cornerRadius(4)
+                        }
+                        
+                        HStack {
+                            Button("リセット") {
+                                tempTemplate = FilenameTemplate.defaultTemplate
+                            }
+                            
+                            Spacer()
+                            
+                            Button("キャンセル") {
+                                showingPopover = false
+                            }
+                            
+                            Button("保存") {
+                                template = tempTemplate
+                                showingPopover = false
+                            }
+                            .buttonStyle(.borderedProminent)
+                        }
+                    }
+                    .padding()
+                    .frame(width: 350)
+                }
+                
+                Spacer()
+            }
+            
+            Text("現在: \(SettingsManager.shared.previewFilename())")
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+    }
+}
+
 @main
 struct ClipboardImageSaverApp: App {
     @StateObject private var hotKeyManager = HotKeyManager()
@@ -129,6 +231,17 @@ struct ClipboardImageSaverApp: App {
                         .fontWeight(.medium)
                     
                     ShortcutKeySelector(selectedShortcut: $settingsManager.shortcutKey, hotKeyManager: hotKeyManager)
+                }
+                
+                Divider()
+                
+                // ファイル名設定セクション
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("ファイル名設定")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                    
+                    FilenameTemplateEditor(template: $settingsManager.filenameTemplate)
                 }
                 
                 Divider()

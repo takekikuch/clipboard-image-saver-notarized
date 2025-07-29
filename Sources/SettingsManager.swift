@@ -32,6 +32,57 @@ struct ShortcutKey: Codable, Equatable {
     static let defaultShortcut = ShortcutKey(modifiers: [.command, .shift], keyCode: "v")
 }
 
+// ファイル名テンプレート用の変数定義
+struct FilenameTemplate {
+    static let defaultTemplate = "Clipboard_{yyyy}-{MM}-{dd}_{HH}-{mm}-{ss}"
+    
+    static let availableVariables: [(String, String)] = [
+        ("{yyyy}", "年（4桁）"),
+        ("{MM}", "月（2桁）"),
+        ("{dd}", "日（2桁）"),
+        ("{HH}", "時（24時間形式）"),
+        ("{mm}", "分（2桁）"),
+        ("{ss}", "秒（2桁）"),
+        ("{format}", "ファイル形式（png/jpeg）")
+    ]
+    
+    static func processTemplate(_ template: String, format: ImageFormat) -> String {
+        var result = template
+        let now = Date()
+        
+        let dateFormatter = DateFormatter()
+        
+        // 年
+        dateFormatter.dateFormat = "yyyy"
+        result = result.replacingOccurrences(of: "{yyyy}", with: dateFormatter.string(from: now))
+        
+        // 月
+        dateFormatter.dateFormat = "MM"
+        result = result.replacingOccurrences(of: "{MM}", with: dateFormatter.string(from: now))
+        
+        // 日
+        dateFormatter.dateFormat = "dd"
+        result = result.replacingOccurrences(of: "{dd}", with: dateFormatter.string(from: now))
+        
+        // 時
+        dateFormatter.dateFormat = "HH"
+        result = result.replacingOccurrences(of: "{HH}", with: dateFormatter.string(from: now))
+        
+        // 分
+        dateFormatter.dateFormat = "mm"
+        result = result.replacingOccurrences(of: "{mm}", with: dateFormatter.string(from: now))
+        
+        // 秒
+        dateFormatter.dateFormat = "ss"
+        result = result.replacingOccurrences(of: "{ss}", with: dateFormatter.string(from: now))
+        
+        // フォーマット
+        result = result.replacingOccurrences(of: "{format}", with: format.fileExtension)
+        
+        return result
+    }
+}
+
 enum ImageFormat: String, CaseIterable {
     case png = "png"
     case jpeg = "jpeg"
@@ -88,6 +139,12 @@ class SettingsManager: ObservableObject {
         }
     }
     
+    @Published var filenameTemplate: String {
+        didSet {
+            UserDefaults.standard.set(filenameTemplate, forKey: "filenameTemplate")
+        }
+    }
+    
     private init() {
         // UserDefaultsから設定を読み込み
         let formatString = UserDefaults.standard.string(forKey: "selectedImageFormat") ?? ImageFormat.png.rawValue
@@ -103,14 +160,19 @@ class SettingsManager: ObservableObject {
         } else {
             self.shortcutKey = ShortcutKey.defaultShortcut
         }
+        
+        // ファイル名テンプレート設定を読み込み
+        self.filenameTemplate = UserDefaults.standard.string(forKey: "filenameTemplate") ?? FilenameTemplate.defaultTemplate
     }
     
     func generateFileName(format: ImageFormat? = nil) -> String {
         let useFormat = format ?? selectedFormat
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
-        let dateString = formatter.string(from: Date())
-        return "Clipboard_\(dateString).\(useFormat.fileExtension)"
+        let processedTemplate = FilenameTemplate.processTemplate(filenameTemplate, format: useFormat)
+        return "\(processedTemplate).\(useFormat.fileExtension)"
+    }
+    
+    func previewFilename(format: ImageFormat? = nil) -> String {
+        return generateFileName(format: format)
     }
     
     func getCompressionProperties(for format: ImageFormat? = nil) -> [NSBitmapImageRep.PropertyKey: Any] {
