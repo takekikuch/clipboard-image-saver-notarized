@@ -172,9 +172,11 @@ setup_dmg_contents() {
     # カスタムアイコンを設定（存在する場合）
     if [ -n "$DMG_ICON" ] && [ -f "$DMG_ICON" ]; then
         cp "$DMG_ICON" "$MOUNT_DIR/.VolumeIcon.icns"
-        # ボリュームアイコンを有効化
-        SetFile -c icnC "$MOUNT_DIR/.VolumeIcon.icns"
-        SetFile -a C "$MOUNT_DIR"
+        # CI環境以外でボリュームアイコンを有効化
+        if [ -z "$CI" ] && [ -z "$GITHUB_ACTIONS" ] && command -v SetFile &> /dev/null; then
+            SetFile -c icnC "$MOUNT_DIR/.VolumeIcon.icns"
+            SetFile -a C "$MOUNT_DIR"
+        fi
     fi
     
     log_success "Contents copied to DMG"
@@ -188,14 +190,20 @@ setup_dmg_contents() {
     log_success "DMG setup completed"
 }
 
-# Finder表示設定
+# Finder表示設定（CI環境対応）
 setup_finder_view() {
     local mount_dir="$1"
     local background_file="$2"
     
     log_info "Configuring Finder view..."
     
-    # AppleScriptでFinder表示を設定
+    # CI環境ではAppleScriptをスキップ
+    if [ -n "$CI" ] || [ -n "$GITHUB_ACTIONS" ]; then
+        log_warning "Skipping Finder configuration in CI environment"
+        return 0
+    fi
+    
+    # AppleScriptでFinder表示を設定（ローカル環境のみ）
     osascript << EOF
 tell application "Finder"
     tell disk "$VOLUME_NAME"
@@ -207,7 +215,9 @@ tell application "Finder"
         set viewOptions to the icon view options of container window
         set arrangement of viewOptions to not arranged
         set icon size of viewOptions to 128
-        set background picture of viewOptions to file ".background:$background_file"
+        if "$background_file" is not "" then
+            set background picture of viewOptions to file ".background:$background_file"
+        end if
         set position of item "$APP_NAME.app" of container window to {150, 200}
         set position of item "Applications" of container window to {450, 200}
         close
