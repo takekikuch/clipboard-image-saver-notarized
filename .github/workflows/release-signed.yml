@@ -1,0 +1,269 @@
+name: Create Signed Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*-signed'  # v1.0.0-signed 形式のタグでトリガー
+
+env:
+  APP_NAME: ClipboardImageSaver
+  XCODE_VERSION: "15.2"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  build-and-release:
+    runs-on: macos-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Xcode
+      uses: maxim-lobanov/setup-xcode@v1
+      with:
+        xcode-version: ${{ env.XCODE_VERSION }}
+        
+    - name: Get version from tag
+      id: version
+      run: |
+        VERSION=${GITHUB_REF#refs/tags/v}
+        VERSION=${VERSION%-signed}  # -signed を削除
+        echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+        echo "TAG_NAME=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+        
+    - name: Cache Swift packages
+      uses: actions/cache@v4
+      with:
+        path: .build
+        key: ${{ runner.os }}-swift-${{ hashFiles('Package.swift') }}
+        restore-keys: |
+          ${{ runner.os }}-swift-
+          
+    - name: Resolve Swift dependencies
+      run: swift package resolve
+      
+    - name: Build application
+      run: swift build -c release
+      
+    - name: Create application bundle
+      run: |
+        # アプリケーションバンドル作成
+        mkdir -p dist/${{ env.APP_NAME }}.app/Contents/MacOS
+        mkdir -p dist/${{ env.APP_NAME }}.app/Contents/Resources
+        
+        # 実行ファイルコピー
+        cp .build/release/${{ env.APP_NAME }} dist/${{ env.APP_NAME }}.app/Contents/MacOS/
+        
+        # 完全なInfo.plist作成
+        cat > dist/${{ env.APP_NAME }}.app/Contents/Info.plist << 'EOF'
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+            <key>CFBundleExecutable</key>
+            <string>ClipboardImageSaver</string>
+            <key>CFBundleIdentifier</key>
+            <string>com.takekikuch.clipboardimagesaver</string>
+            <key>CFBundleName</key>
+            <string>Clipboard Image Saver</string>
+            <key>CFBundleDisplayName</key>
+            <string>Clipboard Image Saver</string>
+            <key>CFBundleVersion</key>
+            <string>${{ steps.version.outputs.VERSION }}</string>
+            <key>CFBundleShortVersionString</key>
+            <string>${{ steps.version.outputs.VERSION }}</string>
+            <key>CFBundlePackageType</key>
+            <string>APPL</string>
+            <key>CFBundleSignature</key>
+            <string>????</string>
+            <key>CFBundleInfoDictionaryVersion</key>
+            <string>6.0</string>
+            <key>LSMinimumSystemVersion</key>
+            <string>13.0</string>
+            <key>LSUIElement</key>
+            <true/>
+            <key>NSHumanReadableCopyright</key>
+            <string>© 2025 takekikuch</string>
+            <key>NSAppleEventsUsageDescription</key>
+            <string>Finderの現在フォルダに画像を保存するために使用します。</string>
+            <key>NSAppleScriptEnabled</key>
+            <true/>
+            <key>NSServices</key>
+            <array>
+                <dict>
+                    <key>NSMenuItem</key>
+                    <dict>
+                        <key>default</key>
+                        <string>画像をここに保存</string>
+                    </dict>
+                    <key>NSMessage</key>
+                    <string>saveImageToCurrentFolder</string>
+                    <key>NSRequiredContext</key>
+                    <dict>
+                        <key>NSApplicationIdentifier</key>
+                        <string>com.apple.finder</string>
+                    </dict>
+                    <key>NSReturnTypes</key>
+                    <array>
+                        <string>NSStringPboardType</string>
+                    </array>
+                    <key>NSSendTypes</key>
+                    <array>
+                        <string>NSStringPboardType</string>
+                    </array>
+                </dict>
+            </array>
+        </dict>
+        </plist>
+        EOF
+        
+        # 実行権限設定
+        chmod +x dist/${{ env.APP_NAME }}.app/Contents/MacOS/${{ env.APP_NAME }}
+        
+    - name: Setup notarization profile
+      run: |
+        # キーチェーンアクセスでnotarytoolプロファイル作成
+        xcrun notarytool store-credentials "notarytool-profile" \
+          --apple-id "${{ secrets.APPLE_ID }}" \
+          --password "${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}" \
+          --team-id "${{ secrets.APPLE_TEAM_ID }}"
+        
+    - name: Sign and notarize application
+      run: |
+        # コード署名
+        codesign --deep --force --verify --verbose \
+          --sign "${{ secrets.DEVELOPER_ID_APPLICATION }}" \
+          --entitlements ClipboardImageSaver.entitlements \
+          --options runtime \
+          "dist/${{ env.APP_NAME }}.app"
+        
+        # 署名検証
+        codesign --verify --deep --strict --verbose=2 "dist/${{ env.APP_NAME }}.app"
+        
+        # ZIP作成
+        ditto -c -k --keepParent "dist/${{ env.APP_NAME }}.app" "signed-app.zip"
+        
+        # 公証申請
+        xcrun notarytool submit "signed-app.zip" \
+          --keychain-profile "notarytool-profile" \
+          --wait
+        
+        # 公証チケット添付
+        xcrun stapler staple "dist/${{ env.APP_NAME }}.app"
+        
+        # 最終検証
+        spctl --assess -vv --type exec "dist/${{ env.APP_NAME }}.app"
+        
+    - name: Create signed DMG
+      run: |
+        # DMG作成用の一時フォルダ
+        TEMP_DIR=$(mktemp -d)
+        
+        # 署名済みアプリをコピー
+        cp -R "dist/${{ env.APP_NAME }}.app" "$TEMP_DIR/"
+        
+        # Applicationsフォルダへのシンボリックリンク
+        ln -s /Applications "$TEMP_DIR/Applications"
+        
+        # DMG作成
+        hdiutil create -srcfolder "$TEMP_DIR" \
+          -volname "${{ env.APP_NAME }} ${{ steps.version.outputs.VERSION }} (Signed)" \
+          -fs HFS+ \
+          -fsargs "-c c=64,a=16,e=16" \
+          -format UDZO \
+          -imagekey zlib-level=9 \
+          "dist/${{ env.APP_NAME }}-${{ steps.version.outputs.VERSION }}-signed.dmg"
+        
+        # DMG署名（Installer証明書があれば）
+        if [ -n "${{ secrets.DEVELOPER_ID_INSTALLER }}" ]; then
+          codesign --sign "${{ secrets.DEVELOPER_ID_INSTALLER }}" \
+            "dist/${{ env.APP_NAME }}-${{ steps.version.outputs.VERSION }}-signed.dmg"
+        fi
+        
+        # 一時フォルダ削除
+        rm -rf "$TEMP_DIR"
+        
+    - name: Calculate checksums
+      id: checksums
+      run: |
+        cd dist
+        DMG_FILE="${{ env.APP_NAME }}-${{ steps.version.outputs.VERSION }}-signed.dmg"
+        if [ -f "$DMG_FILE" ]; then
+          SHA256_DMG=$(shasum -a 256 "$DMG_FILE" | cut -d' ' -f1)
+          echo "SHA256_DMG=$SHA256_DMG" >> $GITHUB_OUTPUT
+          echo "DMG_FILE=$DMG_FILE" >> $GITHUB_OUTPUT
+          echo "DMG_SIZE=$(du -h "$DMG_FILE" | cut -f1)" >> $GITHUB_OUTPUT
+        fi
+        
+    - name: Generate release notes
+      id: release_notes
+      run: |
+        cat > release_notes.md << EOF
+        # ${{ env.APP_NAME }} ${{ steps.version.outputs.VERSION }} (署名版)
+        
+        ## 🎉 署名・公証済みリリース
+        
+        このバージョンは**Developer ID証明書**で署名され、**Appleによる公証**を受けているため、macOSのGatekeeper警告なしで実行できます。
+        
+        ## 📥 ダウンロード / Download
+        
+        - **DMG (署名版)**: [${{ steps.checksums.outputs.DMG_FILE }}](https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.TAG_NAME }}/${{ steps.checksums.outputs.DMG_FILE }})
+        
+        ## 📋 チェックサム / Checksums
+        
+        - **SHA256**: \`${{ steps.checksums.outputs.SHA256_DMG }}\`
+        - **ファイルサイズ**: ${{ steps.checksums.outputs.DMG_SIZE }}
+        
+        ## 🔧 インストール方法 / Installation
+        
+        1. DMGファイルをダウンロード
+        2. DMGをマウントし、${{ env.APP_NAME }}.appをApplicationsフォルダにドラッグ
+        3. **通常通りダブルクリックで起動可能**（警告なし）
+        4. 初回起動時に権限設定を行う（アクセシビリティ・Apple Events）
+        
+        ## ✨ 主な機能 / Features
+        
+        - **グローバルショートカット**: ⌘+Shift+V でクリップボード画像を保存
+        - **リアルタイムプレビュー**: クリップボード画像の即座な表示
+        - **ドラッグ&ドロップ**: プレビューから直接保存
+        - **フォーマット選択**: PNG・JPEG形式での保存
+        - **カスタマイズ**: ショートカットキー・ファイル名テンプレート変更可能
+        
+        ## 🛠️ システム要件 / System Requirements
+        
+        - macOS 13.0 以降
+        - アクセシビリティ権限
+        - Apple Events権限
+        
+        ## 🔒 セキュリティ / Security
+        
+        - ✅ **Developer ID証明書**による署名
+        - ✅ **Apple公証済み**（Gatekeeper承認）
+        - ✅ **Hardened Runtime**対応
+        - ✅ **オープンソース**コード公開
+        
+        ## 📞 サポート / Support
+        
+        バグ報告や機能要望は[Issues](https://github.com/${{ github.repository }}/issues)からお願いします。
+        
+        ---
+        
+        **🎊 完全に安全な署名版リリースです！警告なしで実行できます。**
+        EOF
+        
+    - name: Create GitHub Release
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        # GitHub CLIでリリース作成
+        gh release create ${{ steps.version.outputs.TAG_NAME }} \
+          --title "${{ env.APP_NAME }} ${{ steps.version.outputs.VERSION }} (署名版)" \
+          --notes-file release_notes.md \
+          --draft=false \
+          --prerelease=false \
+          dist/${{ steps.checksums.outputs.DMG_FILE }} \
+          README.md \
+          LICENSE

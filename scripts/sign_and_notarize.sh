@@ -11,7 +11,7 @@ set -e
 # 設定
 APP_NAME="ClipboardImageSaver"
 APP_VERSION="1.0.0"
-DEVELOPER_ID="Developer ID Application: Your Name (TEAM_ID)"
+DEVELOPER_ID="Developer ID Application: Takeru Kikuchi (MDH8A45XTP)"
 KEYCHAIN_PROFILE="notarytool-profile"
 BUILD_DIR=".build/release"
 DIST_DIR="dist"
