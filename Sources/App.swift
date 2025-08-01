@@ -211,58 +211,73 @@ struct PermissionGuideSection: View {
     @State private var missingPermissions: [PermissionManager.PermissionType] = []
     
     var body: some View {
-        if !missingPermissions.isEmpty {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundColor(.orange)
-                    Text("権限設定が必要です")
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                }
-                
-                VStack(alignment: .leading, spacing: 6) {
-                    ForEach(missingPermissions, id: \.self) { permission in
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack {
-                                Image(systemName: permission == .accessibility ? "hand.raised.fill" : "applescript.fill")
-                                    .foregroundColor(.blue)
-                                    .frame(width: 16)
-                                
-                                Text(permission.title)
-                                    .font(.caption)
-                                    .fontWeight(.medium)
-                                
-                                Spacer()
-                                
-                                Button("設定") {
-                                    permissionManager.openSystemPreferences(for: permission)
+        Group {
+            if !missingPermissions.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundColor(.orange)
+                        Text("権限設定が必要です")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                    }
+                    
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(missingPermissions, id: \.self) { permission in
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack {
+                                    Image(systemName: permission == .accessibility ? "hand.raised.fill" : "applescript.fill")
+                                        .foregroundColor(.blue)
+                                        .frame(width: 16)
+                                    
+                                    Text(permission.title)
+                                        .font(.caption)
+                                        .fontWeight(.medium)
+                                    
+                                    Spacer()
+                                    
+                                    Button("設定") {
+                                        permissionManager.openSystemPreferences(for: permission)
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .controlSize(.mini)
                                 }
-                                .buttonStyle(.bordered)
-                                .controlSize(.mini)
+                                
+                                Text(permission.description)
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                                    .padding(.leading, 20)
                             }
-                            
-                            Text(permission.description)
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                                .padding(.leading, 20)
                         }
                     }
+                    
+                    HStack {
+                        Button("権限を再確認") {
+                            checkPermissions()
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        
+                        Spacer()
+                        
+                        Text("設定後、自動で有効になります")
+                            .font(.caption2)
+                            .foregroundColor(.blue)
+                    }
                 }
-                
-                Button("権限を再確認") {
-                    checkPermissions()
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-                .frame(maxWidth: .infinity)
+                .padding(10)
+                .background(Color.orange.opacity(0.1))
+                .cornerRadius(8)
             }
-            .padding(8)
-            .background(Color.orange.opacity(0.1))
-            .cornerRadius(8)
-            .onAppear {
-                checkPermissions()
-            }
+        }
+        .onAppear {
+            checkPermissions()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .accessibilityPermissionGranted)) { _ in
+            checkPermissions()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .appleEventsPermissionGranted)) { _ in
+            checkPermissions()
         }
     }
     
@@ -516,6 +531,8 @@ struct ClipboardImageSaverApp: App {
                     Task {
                         try? await Task.sleep(nanoseconds: 500_000_000) // 0.5秒待機
                         permissionManager.requestAccessibilityPermissionIfNeeded()
+                        try? await Task.sleep(nanoseconds: 1_000_000_000) // 1秒待機
+                        permissionManager.requestAppleEventsPermissionIfNeeded()
                     }
                 }
             }

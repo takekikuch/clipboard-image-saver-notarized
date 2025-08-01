@@ -9,6 +9,18 @@ class HotKeyManager: ObservableObject {
     
     init() {
         setupHotKey()
+        
+        // 権限が付与された際の通知を監視
+        NotificationCenter.default.addObserver(
+            forName: .accessibilityPermissionGranted,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            print("🔍 HotKeyManager: Accessibility permission granted - refreshing hotkey")
+            DispatchQueue.main.async {
+                self?.setupHotKey()
+            }
+        }
     }
     
     func setupHotKey() {

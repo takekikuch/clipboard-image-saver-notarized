@@ -8,7 +8,20 @@ class FinderIntegration: ObservableObject {
     @Published var lastError: String = ""
     @Published var showPermissionError = false
     
-    private init() {}
+    private init() {
+        // Apple Events権限が付与された際の通知を監視
+        NotificationCenter.default.addObserver(
+            forName: .appleEventsPermissionGranted,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            print("🔍 FinderIntegration: Apple Events permission granted - clearing errors")
+            DispatchQueue.main.async {
+                self?.lastError = ""
+                self?.showPermissionError = false
+            }
+        }
+    }
     
     func getCurrentFinderWindowPath() -> String? {
         // まず権限をチェック
